@@ -1,5 +1,5 @@
 import numpy as np
-import plotly.subplots as ps
+# import plotly.subplots as ps
 import statsmodels.api as sm
 import pandas as pd
 
@@ -9,18 +9,65 @@ from sklearn.model_selection import (cross_validate, KFold)
 
 from statsmodels.stats.outliers_influence import variance_inflation_factor as VIF
 
-class LinearModelAnalytics:
-
+class SmpleLinearRegression:
     # Simple Linear Regression data
     # These information are gathered from the simple linear regression fit of each predictor
     # Intercept for each predictor
-    slr_intercept_df = pd.DataFrame({'coef' : [], 'std err' : [], 't-statistic' : [], 'P>|t|' : []})
+    intercepts = pd.DataFrame({'coef' : [], 'std err' : [], 't-statistic' : [], 'P>|t|' : []})
     # Parameter/Slope for each predictor
-    slr_param_df = pd.DataFrame({'coef' : [], 'std err' : [], 't-statistic' : [], 'P>|t|' : []})
+    params = pd.DataFrame({'coef' : [], 'std err' : [], 't-statistic' : [], 'P>|t|' : []})
     # Statistics for each model
-    slr_stats_df = pd.DataFrame({'RSE' : [], 'R-squared' : [], 'F-statistic': []})
+    stats = pd.DataFrame({'RSE' : [], 'R-squared' : [], 'F-statistic': []})
     # Dictionary { predictor : result } with the results, key is the name of the predictor
-    slr_results = {}
+    results = {}
+
+    def __init__(self, dataframe, predictors, response) -> None:
+        for predictor in predictors:
+            X = MS([predictor]).fit_transform(dataframe)
+            y = dataframe[response]
+            result = sm.OLS(y, X).fit()
+
+            self.results[predictor] = result
+
+            entry = pd.DataFrame(
+                {
+                    'coef' : [result.params['intercept']], # Get intercept
+                    'std err' : [result.bse['intercept']], # get SE(B_0)
+                    't-statistic' : [result.tvalues['intercept']],   # Get t-statistic
+                    'P>|t|': [result.pvalues['intercept']] # get p-value
+                },
+                index=([predictor+'[_intercept]']))
+            self.intercepts = pd.concat([self.intercepts, entry])
+
+            for index, _ in result.params.items():
+                if index == 'intercept':
+                    continue
+                entry = pd.DataFrame(
+                    {
+                        'coef' : [result.params[index]], # Get slope/parameter
+                        'std err' : [result.bse[index]], # Get SE(B_1)
+                        't-statistic' : [result.tvalues[index]],   # Get t-statistic
+                        'P>|t|': [result.pvalues[index]] # get p-value
+                    },
+                    index=([index]))
+                self.params = pd.concat([self.params, entry])
+
+            entry = pd.DataFrame(
+                {
+                    'RSE' : [np.sqrt(result.scale)], # Get RSE
+                    'R-squared' : [result.rsquared], # Get R-squared
+                    'F-statistic' : [result.fvalue], # Get F-statistic
+                },
+                index=([predictor]))
+            self.stats = pd.concat([self.stats, entry])
+    
+    def __str__(self) -> str:
+        return str(\
+            "\n\n#### SLR Intercept ####\n" + self.intercepts.__str__() + 
+            "\n\n#### SLR Slope/Parameter ####\n" + self.params.__str__() + 
+            "\n\n#### SLR Stats ####\n" + self.stats.__str__())
+
+class LinearModelAnalytics:
 
     # Multiple Linear Regression data
     # This model incorporates all predictors
@@ -29,47 +76,7 @@ class LinearModelAnalytics:
     # Statistics for model
     mlr_stats_df = pd.DataFrame({'RSE' : [], 'R-squared' : [], 'F-statistic': []})
     # VIF from MLR
-    mlr_vif_df = pd.DataFrame({'VIF' : []})
-
-    def _slr_process(self, dataframe, predictors, response) -> None:
-        for predictor in predictors:
-            X = MS([predictor]).fit_transform(dataframe)
-            y = dataframe[response]
-            result = sm.OLS(y, X).fit()
-
-            self.slr_results[predictor] = result
-
-            intercept_entry = pd.DataFrame(
-                {
-                    'coef' : [result.params['intercept']], # Get intercept
-                    'std err' : [result.bse['intercept']], # get SE(B_0)
-                    't-statistic' : [result.tvalues['intercept']],   # Get t-statistic
-                    'P>|t|': [result.pvalues['intercept']] # get p-value
-                },
-                index=([predictor+'_intercept']))
-            self.slr_intercept_df = pd.concat([self.slr_intercept_df, intercept_entry])
-
-            for index, _ in result.params.items():
-                if index == 'intercept':
-                    continue
-                param_entry = pd.DataFrame(
-                    {
-                        'coef' : [result.params[index]], # Get slope/parameter
-                        'std err' : [result.bse[index]], # Get SE(B_1)
-                        't-statistic' : [result.tvalues[index]],   # Get t-statistic
-                        'P>|t|': [result.pvalues[index]] # get p-value
-                    },
-                    index=([index]))
-                self.slr_param_df = pd.concat([self.slr_param_df, param_entry])
-
-            slr_stats_entry = pd.DataFrame(
-                {
-                    'RSE' : [np.sqrt(result.scale)], # Get RSE
-                    'R-squared' : [result.rsquared], # Get R-squared
-                    'F-statistic' : [result.fvalue], # Get F-statistic
-                },
-                index=([predictor]))
-            self.slr_stats_df = pd.concat([self.slr_stats_df, slr_stats_entry])
+    mlr_vif_df = pd.DataFrame({'VIF' : []})        
 
     def _mlr_process(self, dataframe, predictors, response) -> None:
         X = MS(predictors).fit_transform(dataframe)
@@ -108,7 +115,8 @@ class LinearModelAnalytics:
         self.response = response
         self.dataframe = dataframe
 
-        self._slr_process(dataframe, predictors, response)
+        # TODO SimpleLinearRegression __init__
+        # self._slr_process(dataframe, predictors, response)
         self._mlr_process(dataframe, predictors, response)
     
     def __str__(self) -> str:
@@ -116,9 +124,9 @@ class LinearModelAnalytics:
         str_response = self.response
         return str("Predictors: " + str_predictors + 
                    "\nResponse: " + str_response + 
-                   "\n\n#### SLR Intercept ####\n" + self.slr_intercept_df.__str__() + 
-                   "\n\n#### SLR Slope/Parameter ####\n" + self.slr_param_df.__str__() + 
-                   "\n\n#### SLR Stats ####\n" + self.slr_stats_df.__str__() +
+                   "\n\n#### SLR Intercept ####\n" + self.intercepts.__str__() + 
+                   "\n\n#### SLR Slope/Parameter ####\n" + self.params.__str__() + 
+                   "\n\n#### SLR Stats ####\n" + self.stats.__str__() +
                    "\n\n#### MLR Stats ####\n" + self.mlr_df.__str__() + 
                    "\n\n#### MLR Stats ####\n" + self.mlr_stats_df.__str__() +
                    "\n\n#### MLR VIF ####\n" + self.mlr_vif_df.__str__())
@@ -157,8 +165,8 @@ class LinearModelAnalytics:
         fig.update_layout(height=height, width=width)
         fig.update_layout(template='plotly_dark')
 
-        slr_intercept_df = pd.DataFrame({'coef' : [], 'std err' : [], 't-statistic' : [], 'P>|t|' : []})
-        slr_param_df = pd.DataFrame({'coef' : [], 'std err' : [], 't-statistic' : [], 'P>|t|' : []})
+        intercepts = pd.DataFrame({'coef' : [], 'std err' : [], 't-statistic' : [], 'P>|t|' : []})
+        params = pd.DataFrame({'coef' : [], 'std err' : [], 't-statistic' : [], 'P>|t|' : []})
         
         for row, predictor in enumerate(self.predictors):
             row = row + 1
@@ -172,20 +180,20 @@ class LinearModelAnalytics:
             fig.add_hline(y=0, line_width=1, line_color="grey", line_dash="dash", row=row, col=1)
 
             # Residual vs fitted (y_pred) plot
-            fig.add_scatter(x=self.slr_results[predictor].fittedvalues, y=self.slr_results[predictor].resid, mode='markers', row=row, col=2, marker_color="blue")
+            fig.add_scatter(x=self.results[predictor].fittedvalues, y=self.results[predictor].resid, mode='markers', row=row, col=2, marker_color="blue")
             fig.update_xaxes(title_text="Fitted vales", row=row, col=2)
             fig.update_yaxes(title_text="Residuals", row=row, col=2)
             fig.add_hline(y=0, line_width=1, line_color="grey", line_dash="dash", row=row, col=2)
             
             # Residual vs time/index
             # Residual vs fitted (y_pred) plot
-            fig.add_scatter(y=self.slr_results[predictor].resid, mode='lines', row=row, col=3, marker_color="blue")
+            fig.add_scatter(y=self.results[predictor].resid, mode='lines', row=row, col=3, marker_color="blue")
             fig.update_xaxes(title_text="Index", row=row, col=3)
             fig.update_yaxes(title_text="Residuals", row=row, col=3)
             fig.add_hline(y=0, line_width=1, line_color="grey", line_dash="dash", row=row, col=3)
 
             # Leverage satistic
-            infl = self.slr_results[predictor].get_influence()
+            infl = self.results[predictor].get_influence()
             fig.add_scatter(x=np.arange(X.shape[0]), y=infl.hat_matrix_diag, mode='markers', row=row, col=4, marker_color="blue")
             fig.update_xaxes(title_text="Index", row=row, col=4)
             fig.update_yaxes(title_text="Leverage(h_i)", row=row, col=4)
@@ -194,7 +202,7 @@ class LinearModelAnalytics:
             fig.add_hline(y=average_leverage, line_width=1, line_color="red", row=row, col=4)
             
             values = self.dataframe[predictor]
-            y_predict = self.slr_results[predictor].predict(X)
+            y_predict = self.results[predictor].predict(X)
             fig.add_scatter(x=values, y=y, mode='markers', row=row, col=5, marker_color="blue")
             fig.add_scatter(x=values, y=y_predict, row=row, col=5, marker_color="red")
             fig.update_xaxes(title_text=predictor, row=row, col=5)
@@ -208,3 +216,13 @@ class LinearModelAnalytics:
                 fig.update_yaxes(title_text="MSE", row=row, col=6)
 
         fig.show()
+
+if __name__ == "__main__":
+    df = pd.DataFrame(np.random.randint(0,100,size=(100, 4)), columns=['x1', 'x2', 'x3', 'y'])
+    df.sample(n=100, random_state=1)
+    df.info()
+    predictors = ['x1', 'x2', 'x3']
+    response = 'y'
+
+    slr = SmpleLinearRegression(df, predictors, response)
+    print(slr)
